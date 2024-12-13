@@ -1,303 +1,274 @@
-use core::mem::{self, MaybeUninit};
+use generic_array::{ArrayLength, GenericArray};
+use sha3::{digest::core_api::CoreProxy, CShake128, CShake256};
 
-/// A hash function.
-pub trait Hash: Clone {
-    /// The hash digest.
-    type Digest: AsRef<[u8]>;
-    /// Creates a new hash.
-    fn new() -> Self;
+use super::enc::EncBuf;
+
+/// A extendable output function (XOF).
+pub trait Xof: Clone {
+    /// Reads output bytes.
+    type Reader: XofReader;
+
+    /// Creates a new XOF with the customization string `s`.
+    fn new(s: &[u8]) -> Self;
+
     /// Updates the running hash with `data`.
     fn update(&mut self, data: &[u8]);
-    /// Returns the hash digest.
-    fn finalize(self) -> Self::Digest;
+
+    /// Returns the output of the XOF.
+    fn finalize_xof(self) -> Self::Reader;
+
+    /// Writes the XOF output to `out`.
+    fn finalize_xof_into(self, out: &mut [u8]) {
+        self.finalize_xof().read(out);
+    }
 }
 
-/// TupleHash over a generic hash.
+/// Output bytes from an XOF.
+pub trait XofReader {
+    /// Reads output bytes from the XOF into `out`.
+    fn read(&mut self, out: &mut [u8]);
+
+    /// Reads `N` output bytes from the XOF into `out`.
+    fn read_n<N: ArrayLength>(&mut self) -> GenericArray<u8, N> {
+        let mut out = GenericArray::default();
+        self.read(&mut out);
+        out
+    }
+}
+
+impl<R> XofReader for R
+where
+    R: sha3::digest::XofReader,
+{
+    fn read(&mut self, out: &mut [u8]) {
+        sha3::digest::XofReader::read(self, out);
+    }
+}
+
+/// `TupleHash128`.
+///
+/// For the XOF variant, see [`TupleHashXof128`].
+pub type TupleHash128 = TupleHash<CShake128>;
+
+/// `TupleHash256`.
+///
+/// For the XOF variant, see [`TupleHashXof256`].
+pub type TupleHash256 = TupleHash<CShake256>;
+
+/// `TupleHashXof128`.
+pub type TupleHashXof128 = TupleHashXof<CShake128>;
+
+/// `TupleHashXof256`.
+pub type TupleHashXof256 = TupleHashXof<CShake256>;
+
+/// A cryptographic hash over a set of strings such that each
+/// string is unambiguously encoded.
+///
+/// For example, the TupleHash of `("abc", "d")` will produce
+/// a different hash value than the TupleHash of `("ab", "cd")`.
+///
+/// For the XOF variant, see [`TupleHashXof`].
+///
+/// # Warning
+///
+/// `TupleHash` is only defined for cSHAKE128 and cSHAKE256.
+/// Using this with a different XOF might have worse security
+/// properties.
 #[derive(Clone, Debug)]
-pub struct TupleHash<H> {
-    hash: H,
+pub struct TupleHash<X> {
+    xof: X,
 }
 
-// 1. z = "".
-// 2. n = the number of input strings in the tuple X.
-// 3. for i = 1 to n:
-//        z = z || encode_string(X[i]).
-// 4. newX = z || right_encode(L).
-impl<H: Hash> Hash for TupleHash<H> {
-    type Digest = H::Digest;
-
-    fn new() -> Self {
-        Self { hash: H::new() }
+impl<X: Xof> TupleHash<X> {
+    /// Creates a `TupleHash` with the customization string `s`.
+    pub fn new(s: &[u8]) -> Self {
+        Self { xof: X::new(s) }
     }
 
-    fn update(&mut self, _data: &[u8]) {}
-
-    fn finalize(self) -> Self::Digest {
-        self.hash.finalize()
-    }
-}
-
-const USIZE_BYTES: usize = ((usize::BITS + 7) / 8) as usize;
-const BITS_SIZE: usize = USIZE_BYTES;
-const BYTES_SIZE: usize = BITS_SIZE + 1;
-const ENC_BUF_SIZE: usize = BYTES_SIZE + 1;
-
-/// Implements `right_encode` and `left_encode`.
-#[derive(Debug)]
-pub struct EncBuf {
-    buf: [MaybeUninit<u8>; ENC_BUF_SIZE],
-}
-
-impl EncBuf {
-    /// Creates a new `EncBuf`.
-    #[inline]
-    pub const fn new() -> Self {
-        Self {
-            buf: [MaybeUninit::uninit(); ENC_BUF_SIZE],
+    /// Writes the string `s` to the hash.
+    pub fn update(&mut self, s: &[u8]) {
+        let mut b = EncBuf::new();
+        for x in b.encode_string(s) {
+            self.xof.update(x);
         }
     }
 
-    /// Encodes `x` as a byte string in a way that can be
-    /// unambiguously parsed from the beginning.
-    pub fn left_encode(&mut self, x: usize) -> &[u8] {
-        const { assert!(usize::BITS < 2040 - 3) }
-
-        let dst = &mut self.buf[..1 + BITS_SIZE];
-
-        copy_from_slice(&mut dst[1..], &x.to_be_bytes());
-
-        // `x|1` ensures that `n < 8`. It's cheaper than the
-        // obvious `if n == 8 { n -= 1; }`.
-        let n = ((x | 1).leading_zeros() / 8) as usize;
-        dst[n].write({
-            let mut v = USIZE_BYTES - n;
-            if v == 0 {
-                v = 1;
-            }
-            v as u8
-        });
-        unsafe { slice_assume_init_ref(&dst[n..]) }
+    /// Returns a fixed-size output.
+    pub fn finalize_into(mut self, out: &mut [u8]) {
+        self.xof.update(EncBuf::new().right_encode_bytes(out.len()));
+        self.xof.finalize_xof_into(out)
     }
 
-    /// Encodes `x*8` as a byte string in a way that can be
-    /// unambiguously parsed from the beginning.
-    ///
-    /// This method avoids overflowing large values of `x`.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use tuple_hash::EncBuf;
-    ///
-    /// assert_eq!(
-    ///     EncBuf::new().left_encode(8192 * 8),
-    ///     EncBuf::new().left_encode_bytes(8192),
-    /// );
-    ///
-    /// // usize::MAX*8 overflows, causing an incorrect result.
-    /// assert_ne!(
-    ///     EncBuf::new().left_encode(usize::MAX.wrapping_mul(8)),
-    ///     EncBuf::new().left_encode_bytes(usize::MAX),
-    /// );
-    /// ```
-    pub fn left_encode_bytes(&mut self, mut x: usize) -> &[u8] {
-        const { assert!(usize::BITS < 2040 - 3) }
-
-        let dst = &mut self.buf[..1 + BYTES_SIZE];
-
-        let hi = (x >> (usize::BITS - 3)) & 0x7;
-        dst[1].write(hi as u8);
-        x <<= 3;
-        copy_from_slice(&mut dst[2..], &x.to_be_bytes());
-
-        // `x|1` ensures that `n < 8`. It's cheaper than the
-        // obvious `if n == 8 { n -= 1; }`.
-        let n = if hi == 0 {
-            1 + ((x | 1).leading_zeros() / 8) as usize
-        } else {
-            0
-        };
-        dst[n].write({
-            let mut v = 1 + USIZE_BYTES - n;
-            if v == 0 {
-                v = 1;
-            }
-            v as u8
-        });
-        unsafe { slice_assume_init_ref(&dst[n..]) }
-    }
-
-    /// Encodes `x` as a byte string in a way that can be
-    /// unambiguously parsed from the end.
-    pub fn right_encode(&mut self, x: usize) -> &[u8] {
-        const { assert!(usize::BITS < 2040 - 3) }
-
-        let dst = &mut self.buf[..BITS_SIZE + 1];
-
-        copy_from_slice(&mut dst[..USIZE_BYTES], &x.to_be_bytes());
-
-        // `x|1` ensures that `n < 8`. It's cheaper than the
-        // obvious `if n == 8 { n -= 1; }`.
-        let n = ((x | 1).leading_zeros() / 8) as usize;
-        dst[dst.len() - 1].write({
-            let mut v = USIZE_BYTES - n;
-            if v == 0 {
-                v = 1;
-            }
-            v as u8
-        });
-        unsafe { slice_assume_init_ref(&dst[n..]) }
-    }
-
-    /// Encodes `x*8` as a byte string in a way that can be
-    /// unambiguously parsed from the beginning.
-    ///
-    /// This method avoids overflowing large values of `x`.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use tuple_hash::EncBuf;
-    ///
-    /// assert_eq!(
-    ///     EncBuf::new().right_encode(8192 * 8),
-    ///     EncBuf::new().right_encode_bytes(8192),
-    /// );
-    ///
-    /// // usize::MAX*8 overflows, causing an incorrect result.
-    /// assert_ne!(
-    ///     EncBuf::new().right_encode(usize::MAX.wrapping_mul(8)),
-    ///     EncBuf::new().right_encode_bytes(usize::MAX),
-    /// );
-    /// ```
-    pub fn right_encode_bytes(&mut self, mut x: usize) -> &[u8] {
-        const { assert!(usize::BITS < 2040 - 3) }
-
-        let dst = &mut self.buf[..BYTES_SIZE + 1];
-
-        let hi = (x >> (usize::BITS - 3)) & 0x7;
-        dst[0].write(hi as u8);
-        x <<= 3;
-        copy_from_slice(&mut dst[1..1 + USIZE_BYTES], &x.to_be_bytes());
-
-        // `x|1` ensures that `n < 8`. It's cheaper than the
-        // obvious `if n == 8 { n -= 1; }`.
-        let n = if hi == 0 {
-            1 + ((x | 1).leading_zeros() / 8) as usize
-        } else {
-            0
-        };
-        dst[dst.len() - 1].write({
-            let mut v = 1 + USIZE_BYTES - n;
-            if v == 0 {
-                v = 1;
-            }
-            v as u8
-        });
-        unsafe { slice_assume_init_ref(&dst[n..]) }
+    /// Returns a fixed-size output.
+    pub fn finalize<N: ArrayLength>(self) -> GenericArray<u8, N> {
+        let mut out = GenericArray::default();
+        self.finalize_into(&mut out);
+        out
     }
 }
 
-impl Clone for EncBuf {
-    #[inline]
-    fn clone(&self) -> Self {
-        // This is correct: the internal state is always
-        // meaningless between calls to
-        // {left,right}_encode_{bits,bytes}.
-        Self::new()
+/// A cryptographic hash over a set of strings such that each
+/// string is unambiguously encoded.
+///
+/// For example, the TupleHash of `("abc", "d")` will produce
+/// a different hash value than the TupleHash of `("ab", "cd")`.
+///
+/// # Warning
+///
+/// `TupleHash` is only defined for cSHAKE128 and cSHAKE256.
+/// Using this with a different XOF might have worse security
+/// properties.
+#[derive(Clone, Debug)]
+pub struct TupleHashXof<X> {
+    xof: X,
+}
+
+impl<X: Xof> TupleHashXof<X> {
+    /// Creates a `TupleHash` with the customization string `s`.
+    pub fn new(s: &[u8]) -> Self {
+        Self { xof: X::new(s) }
+    }
+
+    /// Writes the string `s` to the hash.
+    pub fn update(&mut self, s: &[u8]) {
+        let mut b = EncBuf::new();
+        for x in b.encode_string(s) {
+            self.xof.update(x);
+        }
+    }
+
+    /// Returns a variable-size output.
+    pub fn finalize_xof(mut self) -> X::Reader {
+        self.xof.update(EncBuf::new().right_encode(0));
+        self.xof.finalize_xof()
     }
 }
 
-impl Default for EncBuf {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
+impl<X: Xof> Xof for TupleHashXof<X> {
+    type Reader = X::Reader;
+
+    fn new(s: &[u8]) -> Self {
+        Self { xof: X::new(s) }
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        self.update(data);
+    }
+
+    fn finalize_xof(self) -> Self::Reader {
+        self.finalize_xof()
     }
 }
 
-// From https://doc.rust-lang.org/std/mem/union.MaybeUninit.html#method.copy_from_slice
-fn copy_from_slice<'a, T>(dst: &'a mut [MaybeUninit<T>], src: &[T]) -> &'a mut [T]
+fn tuple_hash<X, I, N>(s: &[u8], x: I) -> GenericArray<u8, N>
 where
-    T: Copy,
+    X: Xof,
+    I: IntoIterator,
+    I::Item: AsRef<[u8]>,
+    N: ArrayLength,
 {
-    // SAFETY: &[T] and &[MaybeUninit<T>] have the same layout
-    let uninit_src: &[MaybeUninit<T>] = unsafe { mem::transmute(src) };
-
-    dst.copy_from_slice(uninit_src);
-
-    // SAFETY: Valid elements have just been copied into `this` so it is initialized
-    unsafe { slice_assume_init_mut(dst) }
+    let mut h = TupleHash::<X>::new(s);
+    for xi in x {
+        h.update(xi.as_ref());
+    }
+    h.finalize()
 }
 
-// From https://doc.rust-lang.org/std/mem/union.MaybeUninit.html#method.slice_assume_init_mut
-unsafe fn slice_assume_init_mut<T>(slice: &mut [MaybeUninit<T>]) -> &mut [T] {
-    // SAFETY: similar to safety notes for `slice_get_ref`, but we have a
-    // mutable reference which is also guaranteed to be valid for writes.
-    unsafe { &mut *(slice as *mut [MaybeUninit<T>] as *mut [T]) }
+/// `TupleHash128` over a fixed-size set of inputs.
+///
+/// For the XOF variant, see [`tuple_hash_xof128`].
+pub fn tuple_hash128<I, N>(s: &[u8], x: I) -> GenericArray<u8, N>
+where
+    I: IntoIterator,
+    I::Item: AsRef<[u8]>,
+    N: ArrayLength,
+{
+    tuple_hash::<CShake128, I, N>(s, x)
 }
 
-unsafe fn slice_assume_init_ref<T>(slice: &[MaybeUninit<T>]) -> &[T] {
-    // SAFETY: casting `slice` to a `*const [T]` is safe since the caller guarantees that
-    // `slice` is initialized, and `MaybeUninit` is guaranteed to have the same layout as `T`.
-    // The pointer obtained is valid since it refers to memory owned by `slice` which is a
-    // reference and thus guaranteed to be valid for reads.
-    unsafe { &*(slice as *const [MaybeUninit<T>] as *const [T]) }
+/// `TupleHash256` over a fixed-size set of inputs.
+///
+/// For the XOF variant, see [`tuple_hash_xof256`].
+pub fn tuple_hash256<I, N>(s: &[u8], x: I) -> GenericArray<u8, N>
+where
+    I: IntoIterator,
+    I::Item: AsRef<[u8]>,
+    N: ArrayLength,
+{
+    tuple_hash::<CShake256, I, N>(s, x)
 }
+
+fn tuple_hash_xof<X, I>(s: &[u8], x: I) -> impl XofReader
+where
+    X: Xof,
+    I: IntoIterator,
+    I::Item: AsRef<[u8]>,
+{
+    let mut h = TupleHashXof::<X>::new(s);
+    for xi in x {
+        h.update(xi.as_ref());
+    }
+    h.finalize_xof()
+}
+
+/// `TupleHashXof256` over a fixed-size set of inputs.
+pub fn tuple_hash_xof128<I>(s: &[u8], x: I) -> impl XofReader
+where
+    I: IntoIterator,
+    I::Item: AsRef<[u8]>,
+{
+    tuple_hash_xof::<CShake128, I>(s, x)
+}
+
+/// `TupleHashXof128` over a fixed-size set of inputs.
+pub fn tuple_hash_xof256<I>(s: &[u8], x: I) -> impl XofReader
+where
+    I: IntoIterator,
+    I::Item: AsRef<[u8]>,
+{
+    tuple_hash_xof::<CShake256, I>(s, x)
+}
+
+macro_rules! impl_cshake {
+    ($ty:ty) => {
+        impl Xof for $ty {
+            type Reader = <$ty as sha3::digest::ExtendableOutput>::Reader;
+
+            fn new(s: &[u8]) -> Self {
+                let core = <$ty as CoreProxy>::Core::new_with_function_name(b"TupleHash", s);
+                <$ty>::from_core(core)
+            }
+
+            fn update(&mut self, data: &[u8]) {
+                sha3::digest::Update::update(self, data);
+            }
+
+            fn finalize_xof(self) -> Self::Reader {
+                sha3::digest::ExtendableOutput::finalize_xof(self)
+            }
+        }
+    };
+}
+impl_cshake!(CShake128);
+impl_cshake!(CShake256);
 
 #[cfg(test)]
 mod tests {
+    use generic_array::typenum::U32;
+
     use super::*;
 
     #[test]
-    fn test_left_encode() {
-        for i in 0..usize::BITS {
-            let x: usize = 1 << i;
-            let mut want = vec![0; 1];
-            want.extend(x.to_be_bytes().iter().skip_while(|&&v| v == 0));
-            want[0] = (want.len() - 1) as u8;
-            assert_eq!(EncBuf::new().left_encode(x), want, "#{x}");
-        }
+    fn test_tuple_hash128() {
+        let lhs = tuple_hash128::<_, U32>(b"test", ["abc", "d"]);
+        let rhs = tuple_hash128::<_, U32>(b"test", ["ab", "cd"]);
+        assert_ne!(lhs, rhs);
     }
 
     #[test]
-    fn test_left_encode_bytes() {
-        for i in 0..usize::BITS {
-            let x: usize = 1 << i;
-            let mut want = vec![0; 1];
-            want.extend(
-                (8 * x as u128)
-                    .to_be_bytes()
-                    .iter()
-                    .skip_while(|&&v| v == 0),
-            );
-            want[0] = (want.len() - 1) as u8;
-            assert_eq!(EncBuf::new().left_encode_bytes(x), want, "#{x}");
-        }
-    }
-
-    #[test]
-    fn test_right_encode() {
-        for i in 0..usize::BITS {
-            let x: usize = 1 << i;
-            let mut want = Vec::from_iter(x.to_be_bytes().iter().copied().skip_while(|&v| v == 0));
-            want.push(want.len() as u8);
-            assert_eq!(EncBuf::new().right_encode(x), want, "#{x}");
-        }
-    }
-
-    #[test]
-    fn test_right_encode_bytes() {
-        for i in 0..usize::BITS {
-            let x: usize = 1 << i;
-            let mut want = Vec::from_iter(
-                (8 * x as u128)
-                    .to_be_bytes()
-                    .iter()
-                    .copied()
-                    .skip_while(|&v| v == 0),
-            );
-            want.push(want.len() as u8);
-            assert_eq!(EncBuf::new().right_encode_bytes(x), want, "#{x}");
-        }
+    fn test_tuple_hash256() {
+        let lhs = tuple_hash256::<_, U32>(b"test", ["abc", "d"]);
+        let rhs = tuple_hash256::<_, U32>(b"test", ["ab", "cd"]);
+        assert_ne!(lhs, rhs);
     }
 }

@@ -16,7 +16,16 @@ categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
 [features]
 default = []
 
+# Enable `std` support.
+#
+# Currently unused.
+std = [
+	"sha3/std",
+]
+
 [dependencies]
+generic-array = { version = "1", default-features = false }
+sha3 = { version = "0.10", default-features = false }
 
 [package.metadata.docs.rs]
 all-features = true
