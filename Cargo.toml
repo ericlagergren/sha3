@@ -14,16 +14,23 @@ keywords = [ "tuple-hash", "hash", "sha3" ]
 categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
 
 [features]
-default = []
+default = ["rust-crypto"]
+
+rust-crypto = [
+	"sha3",
+]
 
 # Enable `std` support.
 std = [
-	"sha3/std",
+	"sha3?/std",
 ]
 
 [dependencies]
 generic-array = { version = "1", default-features = false }
-sha3 = { version = "0.10", default-features = false }
+sha3 = { version = "0.10", default-features = false, optional = true }
+
+[dev-dependencies]
+tuple-hash = { path = ".", features = ["rust-crypto"] }
 
 [package.metadata.docs.rs]
 all-features = true

@@ -32,7 +32,4 @@ mod util;
 
 pub use enc::{EncBuf, EncodedString};
 pub use generic_array;
-pub use hash::{
-    tuple_hash128, tuple_hash256, tuple_hash_xof128, tuple_hash_xof256, TupleHash, TupleHash128,
-    TupleHash256, TupleHashXof, TupleHashXof128, TupleHashXof256, Xof, XofReader,
-};
+pub use hash::*;

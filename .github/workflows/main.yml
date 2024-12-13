@@ -39,4 +39,3 @@ jobs:
           ${{ matrix.deps }}
           cargo install --force cargo-all-features
           cargo test-all-features
-

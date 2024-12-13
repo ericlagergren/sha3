@@ -1,4 +1,5 @@
 use generic_array::{ArrayLength, GenericArray};
+#[cfg(feature = "rust-crypto")]
 use sha3::{digest::core_api::CoreProxy, CShake128, CShake256};
 
 use super::enc::EncBuf;
@@ -36,6 +37,8 @@ pub trait XofReader {
     }
 }
 
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 impl<R> XofReader for R
 where
     R: sha3::digest::XofReader,
@@ -48,17 +51,25 @@ where
 /// `TupleHash128`.
 ///
 /// For the XOF variant, see [`TupleHashXof128`].
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub type TupleHash128 = TupleHash<CShake128>;
 
 /// `TupleHash256`.
 ///
 /// For the XOF variant, see [`TupleHashXof256`].
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub type TupleHash256 = TupleHash<CShake256>;
 
 /// `TupleHashXof128`.
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub type TupleHashXof128 = TupleHashXof<CShake128>;
 
 /// `TupleHashXof256`.
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub type TupleHashXof256 = TupleHashXof<CShake256>;
 
 /// A cryptographic hash over a set of strings such that each
@@ -160,7 +171,14 @@ impl<X: Xof> Xof for TupleHashXof<X> {
     }
 }
 
-fn tuple_hash<X, I, N>(s: &[u8], x: I) -> GenericArray<u8, N>
+/// `TupleHash` over a fixed-size set of inputs.
+///
+/// # Warning
+///
+/// `TupleHash` is only defined for cSHAKE128 and cSHAKE256.
+/// Using this with a different XOF might have worse security
+/// properties.
+pub fn tuple_hash<X, I, N>(s: &[u8], x: I) -> GenericArray<u8, N>
 where
     X: Xof,
     I: IntoIterator,
@@ -177,6 +195,8 @@ where
 /// `TupleHash128` over a fixed-size set of inputs.
 ///
 /// For the XOF variant, see [`tuple_hash_xof128`].
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub fn tuple_hash128<I, N>(s: &[u8], x: I) -> GenericArray<u8, N>
 where
     I: IntoIterator,
@@ -189,6 +209,8 @@ where
 /// `TupleHash256` over a fixed-size set of inputs.
 ///
 /// For the XOF variant, see [`tuple_hash_xof256`].
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub fn tuple_hash256<I, N>(s: &[u8], x: I) -> GenericArray<u8, N>
 where
     I: IntoIterator,
@@ -198,7 +220,14 @@ where
     tuple_hash::<CShake256, I, N>(s, x)
 }
 
-fn tuple_hash_xof<X, I>(s: &[u8], x: I) -> impl XofReader
+/// `TupleHashXof` over a fixed-size set of inputs.
+///
+/// # Warning
+///
+/// `TupleHashXof` is only defined for cSHAKE128 and cSHAKE256.
+/// Using this with a different XOF might have worse security
+/// properties.
+pub fn tuple_hash_xof<X, I>(s: &[u8], x: I) -> impl XofReader
 where
     X: Xof,
     I: IntoIterator,
@@ -212,6 +241,8 @@ where
 }
 
 /// `TupleHashXof256` over a fixed-size set of inputs.
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub fn tuple_hash_xof128<I>(s: &[u8], x: I) -> impl XofReader
 where
     I: IntoIterator,
@@ -221,6 +252,8 @@ where
 }
 
 /// `TupleHashXof128` over a fixed-size set of inputs.
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub fn tuple_hash_xof256<I>(s: &[u8], x: I) -> impl XofReader
 where
     I: IntoIterator,
@@ -231,6 +264,8 @@ where
 
 macro_rules! impl_cshake {
     ($ty:ty) => {
+        #[cfg(feature = "rust-crypto")]
+        #[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
         impl Xof for $ty {
             type Reader = <$ty as sha3::digest::ExtendableOutput>::Reader;
 
