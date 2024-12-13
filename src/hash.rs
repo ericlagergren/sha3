@@ -289,8 +289,7 @@ mod tests {
     fn test_right_encode_bytes() {
         for i in 0..usize::BITS {
             let x: usize = 1 << i;
-            let mut want = vec![0; 1];
-            want.extend(
+            let mut want = Vec::from_iter(
                 (8 * x as u128)
                     .to_be_bytes()
                     .iter()
