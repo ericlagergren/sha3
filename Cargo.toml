@@ -16,6 +16,12 @@ categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
 [features]
 default = ["rust-crypto"]
 
+# Enable `alloc` support.
+#
+# Currently unused.
+alloc = []
+
+# Enable RustCrypto support.
 rust-crypto = [
 	"sha3",
 ]
