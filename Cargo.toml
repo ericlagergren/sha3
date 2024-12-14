@@ -1,0 +1,42 @@
+[package]
+name = "tuple-hash"
+version = "0.3.0"
+description = """
+TupleHash per NIST SP 800-185
+"""
+authors = ["Eric Lagergren"]
+edition = "2021"
+license = "BSD-3-Clause"
+readme = "README.md"
+documentation = "https://docs.rs/tuple-hash"
+repository = "https://github.com/ericlagergren/tuple-hash"
+keywords = [ "tuple-hash", "hash", "sha3" ]
+categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
+
+[features]
+default = ["rust-crypto"]
+
+rust-crypto = [
+	"sha3",
+]
+
+# Enable `std` support.
+std = [
+	"sha3?/std",
+]
+
+[dependencies]
+generic-array = { version = "1", default-features = false }
+sha3 = { version = "0.10", default-features = false, optional = true }
+
+[dev-dependencies]
+tuple-hash = { path = ".", features = ["rust-crypto"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.cargo-all-features]
+always_include_features = []
+
+denylist = []
