@@ -308,6 +308,7 @@ impl ExactSizeIterator for EncodedString<'_> {
 impl FusedIterator for EncodedString<'_> {}
 
 #[cfg(test)]
+#[allow(clippy::indexing_slicing, reason = "Tests")]
 mod tests {
     use super::*;
 

@@ -291,6 +291,7 @@ impl_cshake!(CShake128);
 impl_cshake!(CShake256);
 
 #[cfg(test)]
+#[allow(clippy::type_complexity, reason = "Tests")]
 mod tests {
     use generic_array::typenum::{U32, U64};
 
@@ -346,7 +347,7 @@ mod tests {
                 ],
             ),
         ];
-        for (i, (s, x, want)) in vectors.into_iter().enumerate() {
+        for (i, (s, x, want)) in vectors.iter().enumerate() {
             let got = tuple_hash128::<&[&[u8]], U32>(s, x);
             let want = GenericArray::from(*want);
             assert_eq!(got, want, "#{i}");
@@ -395,7 +396,7 @@ mod tests {
                 ],
             ),
         ];
-        for (i, (s, x, want)) in vectors.into_iter().enumerate() {
+        for (i, (s, x, want)) in vectors.iter().enumerate() {
             let got = tuple_hash256::<&[&[u8]], U64>(s, x);
             let want = GenericArray::from(*want);
             assert_eq!(got, want, "#{i}");
