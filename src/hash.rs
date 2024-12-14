@@ -43,6 +43,7 @@ impl<R> XofReader for R
 where
     R: sha3::digest::XofReader,
 {
+    #[inline]
     fn read(&mut self, out: &mut [u8]) {
         sha3::digest::XofReader::read(self, out);
     }
@@ -62,16 +63,6 @@ pub type TupleHash128 = TupleHash<CShake128>;
 #[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
 pub type TupleHash256 = TupleHash<CShake256>;
 
-/// `TupleHashXof128`.
-#[cfg(feature = "rust-crypto")]
-#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
-pub type TupleHashXof128 = TupleHashXof<CShake128>;
-
-/// `TupleHashXof256`.
-#[cfg(feature = "rust-crypto")]
-#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
-pub type TupleHashXof256 = TupleHashXof<CShake256>;
-
 /// A cryptographic hash over a set of strings such that each
 /// string is unambiguously encoded.
 ///
@@ -85,7 +76,7 @@ pub type TupleHashXof256 = TupleHashXof<CShake256>;
 /// `TupleHash` is only defined for cSHAKE128 and cSHAKE256.
 /// Using this with a different XOF might have worse security
 /// properties.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TupleHash<X> {
     xof: X,
 }
@@ -118,6 +109,29 @@ impl<X: Xof> TupleHash<X> {
     }
 }
 
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
+impl<X: Xof> sha3::digest::HashMarker for TupleHash<X> {}
+
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
+impl<X: Xof> sha3::digest::Update for TupleHash<X> {
+    #[inline]
+    fn update(&mut self, data: &[u8]) {
+        self.update(data);
+    }
+}
+
+/// `TupleHashXof128`.
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
+pub type TupleHashXof128 = TupleHashXof<CShake128>;
+
+/// `TupleHashXof256`.
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
+pub type TupleHashXof256 = TupleHashXof<CShake256>;
+
 /// A cryptographic hash over a set of strings such that each
 /// string is unambiguously encoded.
 ///
@@ -129,7 +143,7 @@ impl<X: Xof> TupleHash<X> {
 /// `TupleHash` is only defined for cSHAKE128 and cSHAKE256.
 /// Using this with a different XOF might have worse security
 /// properties.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TupleHashXof<X> {
     xof: X,
 }
@@ -149,14 +163,14 @@ impl<X: Xof> TupleHashXof<X> {
     }
 
     /// Returns a variable-size output.
-    pub fn finalize_xof(mut self) -> X::Reader {
+    pub fn finalize_xof(mut self) -> TupleHashXofReader<X::Reader> {
         self.xof.update(EncBuf::new().right_encode(0));
-        self.xof.finalize_xof()
+        TupleHashXofReader(self.xof.finalize_xof())
     }
 }
 
 impl<X: Xof> Xof for TupleHashXof<X> {
-    type Reader = X::Reader;
+    type Reader = TupleHashXofReader<X::Reader>;
 
     #[inline]
     fn new(s: &[u8]) -> Self {
@@ -171,6 +185,49 @@ impl<X: Xof> Xof for TupleHashXof<X> {
     #[inline]
     fn finalize_xof(self) -> Self::Reader {
         self.finalize_xof()
+    }
+}
+
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
+impl<X: Xof> sha3::digest::ExtendableOutput for TupleHashXof<X> {
+    type Reader = TupleHashXofReader<X::Reader>;
+
+    fn finalize_xof(self) -> Self::Reader {
+        self.finalize_xof()
+    }
+}
+
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
+impl<X: Xof> sha3::digest::HashMarker for TupleHashXof<X> {}
+
+#[cfg(feature = "rust-crypto")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rust-crypto")))]
+impl<X: Xof> sha3::digest::Update for TupleHashXof<X> {
+    #[inline]
+    fn update(&mut self, data: &[u8]) {
+        self.update(data);
+    }
+}
+
+/// An [`XofReader`] for [`TupleHashXof`].
+#[derive(Clone, Debug)]
+pub struct TupleHashXofReader<R>(R);
+
+#[cfg(not(feature = "rust-crypto"))]
+impl<R: XofReader> XofReader for TupleHashXofReader<R> {
+    #[inline]
+    fn read(&mut self, out: &mut [u8]) {
+        self.0.read(out);
+    }
+}
+
+#[cfg(feature = "rust-crypto")]
+impl<R: XofReader> sha3::digest::XofReader for TupleHashXofReader<R> {
+    #[inline]
+    fn read(&mut self, out: &mut [u8]) {
+        self.0.read(out);
     }
 }
 

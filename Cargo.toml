@@ -1,6 +1,6 @@
 [package]
 name = "tuple-hash"
-version = "0.3.1"
+version = "0.4.0"
 description = """
 TupleHash per NIST SP 800-185
 """
@@ -16,6 +16,12 @@ categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
 [features]
 default = ["rust-crypto"]
 
+# Enable `alloc` support.
+#
+# Currently unused.
+alloc = []
+
+# Enable RustCrypto support.
 rust-crypto = [
 	"sha3",
 ]
