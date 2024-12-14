@@ -12,7 +12,11 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [
+      macos-latest,
+      ubuntu-latest,
+      windows-latest,
+    ]
     strategy:
       matrix:
         include:
