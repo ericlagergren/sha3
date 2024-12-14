@@ -1,4 +1,5 @@
 use core::{
+    array,
     iter::{ExactSizeIterator, FusedIterator},
     mem::MaybeUninit,
 };
@@ -41,6 +42,7 @@ impl EncBuf {
     ///     ],
     /// );
     /// ```
+    #[inline]
     pub fn encode_string<'a, 'b>(&'a mut self, s: &'b [u8]) -> EncodedString<'a>
     where
         'b: 'a,
@@ -55,8 +57,13 @@ impl EncBuf {
 
     /// Encodes `x` as a byte string in a way that can be
     /// unambiguously parsed from the beginning.
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "The compiler can prove that the indices are in bounds"
+    )]
+    #[inline]
     pub fn left_encode(&mut self, x: usize) -> &[u8] {
-        const { assert!(usize::BITS < 2040 - 3) }
+        const { assert!(usize::BITS < 2040) }
 
         let dst = &mut self.buf[..1 + BITS_SIZE];
 
@@ -72,6 +79,7 @@ impl EncBuf {
             }
             v as u8
         });
+        // SAFETY: We wrote to every element in `dst`.
         unsafe { slice_assume_init_ref(&dst[n..]) }
     }
 
@@ -102,6 +110,11 @@ impl EncBuf {
     ///     EncBuf::new().left_encode_bytes(usize::MAX),
     /// );
     /// ```
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "The compiler can prove that the indices are in bounds"
+    )]
+    #[inline]
     pub fn left_encode_bytes(&mut self, mut x: usize) -> &[u8] {
         const { assert!(usize::BITS < 2040 - 3) }
 
@@ -126,13 +139,19 @@ impl EncBuf {
             }
             v as u8
         });
+        // SAFETY: We wrote to every element in `dst`.
         unsafe { slice_assume_init_ref(&dst[n..]) }
     }
 
     /// Encodes `x` as a byte string in a way that can be
     /// unambiguously parsed from the end.
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "The compiler can prove that the indices are in bounds"
+    )]
+    #[inline]
     pub fn right_encode(&mut self, x: usize) -> &[u8] {
-        const { assert!(usize::BITS < 2040 - 3) }
+        const { assert!(usize::BITS < 2040) }
 
         let dst = &mut self.buf[..BITS_SIZE + 1];
 
@@ -148,6 +167,7 @@ impl EncBuf {
             }
             v as u8
         });
+        // SAFETY: We wrote to every element in `dst`.
         unsafe { slice_assume_init_ref(&dst[n..]) }
     }
 
@@ -178,6 +198,11 @@ impl EncBuf {
     ///     EncBuf::new().right_encode_bytes(usize::MAX),
     /// );
     /// ```
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "The compiler can prove that the indices are in bounds"
+    )]
+    #[inline]
     pub fn right_encode_bytes(&mut self, mut x: usize) -> &[u8] {
         const { assert!(usize::BITS < 2040 - 3) }
 
@@ -202,6 +227,7 @@ impl EncBuf {
             }
             v as u8
         });
+        // SAFETY: We wrote to every element in `dst`.
         unsafe { slice_assume_init_ref(&dst[n..]) }
     }
 }
@@ -230,8 +256,9 @@ impl Default for EncBuf {
 /// An iterator over the parts of an encoded string.
 ///
 /// See [`encode_string`][EncBuf::encode_string].
+#[derive(Clone, Debug)]
 pub struct EncodedString<'a> {
-    iter: core::array::IntoIter<&'a [u8], 2>,
+    iter: array::IntoIter<&'a [u8], 2>,
 }
 
 impl<'a> Iterator for EncodedString<'a> {

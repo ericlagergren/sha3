@@ -6,6 +6,7 @@ where
     T: Copy,
 {
     // SAFETY: &[T] and &[MaybeUninit<T>] have the same layout
+    #[allow(clippy::transmute_ptr_to_ptr, reason = "Copied from `core`")]
     let uninit_src: &[MaybeUninit<T>] = unsafe { mem::transmute::<&[T], &[MaybeUninit<T>]>(src) };
 
     dst.copy_from_slice(uninit_src);
