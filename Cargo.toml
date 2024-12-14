@@ -1,6 +1,6 @@
 [package]
 name = "tuple-hash"
-version = "0.3.1"
+version = "0.4.0"
 description = """
 TupleHash per NIST SP 800-185
 """
