@@ -1,8 +1,7 @@
 use generic_array::{ArrayLength, GenericArray};
 #[cfg(feature = "rust-crypto")]
 use sha3::{digest::core_api::CoreProxy, CShake128, CShake256};
-
-use super::enc::EncBuf;
+use sha3_utils::{encode_string, right_encode, right_encode_bytes};
 
 /// A extendable output function (XOF).
 pub trait Xof: Clone {
@@ -89,15 +88,14 @@ impl<X: Xof> TupleHash<X> {
 
     /// Writes the string `s` to the hash.
     pub fn update(&mut self, s: &[u8]) {
-        let mut b = EncBuf::new();
-        for x in b.encode_string(s) {
+        for x in &encode_string(s) {
             self.xof.update(x);
         }
     }
 
     /// Returns a fixed-size output.
     pub fn finalize_into(mut self, out: &mut [u8]) {
-        self.xof.update(EncBuf::new().right_encode_bytes(out.len()));
+        self.xof.update(right_encode_bytes(out.len()).as_bytes());
         self.xof.finalize_xof_into(out)
     }
 
@@ -156,15 +154,14 @@ impl<X: Xof> TupleHashXof<X> {
 
     /// Writes the string `s` to the hash.
     pub fn update(&mut self, s: &[u8]) {
-        let mut b = EncBuf::new();
-        for x in b.encode_string(s) {
+        for x in &encode_string(s) {
             self.xof.update(x);
         }
     }
 
     /// Returns a variable-size output.
     pub fn finalize_xof(mut self) -> TupleHashXofReader<X::Reader> {
-        self.xof.update(EncBuf::new().right_encode(0));
+        self.xof.update(right_encode(0).as_bytes());
         TupleHashXofReader(self.xof.finalize_xof())
     }
 }

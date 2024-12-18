@@ -1,0 +1,52 @@
+[package]
+name = "tuple-hash"
+version = "0.4.0"
+description = """
+TupleHash per NIST SP 800-185
+"""
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/tuple-hash"
+keywords = [ "tuple-hash", "hash", "sha3" ]
+categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
+
+[lints]
+workspace = true
+
+[features]
+default = ["rust-crypto"]
+
+# Enable `alloc` support.
+#
+# Currently unused.
+alloc = []
+
+# Enable RustCrypto support.
+rust-crypto = [
+	"sha3",
+]
+
+# Enable `std` support.
+std = [
+	"sha3?/std",
+]
+
+[dependencies]
+generic-array = { version = "1", default-features = false }
+sha3 = { version = "0.10", default-features = false, optional = true }
+sha3-utils = { version = "0.1.0", path = "../utils", default-features = false }
+
+[dev-dependencies]
+tuple-hash = { path = ".", features = ["rust-crypto"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.cargo-all-features]
+always_include_features = []
+
+denylist = []
