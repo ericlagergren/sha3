@@ -13,6 +13,9 @@ documentation = "https://docs.rs/tuple-hash"
 keywords = [ "tuple-hash", "hash", "sha3" ]
 categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
 
+[lints]
+workspace = true
+
 [features]
 default = ["rust-crypto"]
 
@@ -34,6 +37,7 @@ std = [
 [dependencies]
 generic-array = { version = "1", default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
+sha3-utils = { version = "0.1.0", path = "../utils", default-features = false }
 
 [dev-dependencies]
 tuple-hash = { path = ".", features = ["rust-crypto"] }

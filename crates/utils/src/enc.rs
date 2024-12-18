@@ -1,4 +1,11 @@
-//! `left_encode`, `right_encode`, etc.
+#![allow(
+    clippy::indexing_slicing,
+    reason = "The compiler can prove that the indices are in bounds"
+)]
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "All arithmetic is in bounds"
+)]
 
 use core::{
     array,
@@ -22,10 +29,6 @@ const _: () = assert!(USIZE_BYTES <= 255);
 
 /// Encodes `x` as a byte string in a way that can be
 /// unambiguously parsed from the beginning.
-#[allow(
-    clippy::indexing_slicing,
-    reason = "The compiler can prove that the indices are in bounds"
-)]
 #[inline]
 pub fn left_encode(x: usize) -> LeftEncode {
     let mut buf = [MaybeUninit::uninit(); 1 + USIZE_BYTES];
@@ -100,10 +103,6 @@ impl PartialEq for LeftEncode {
 ///     left_encode_bytes(usize::MAX).as_bytes(),
 /// );
 /// ```
-#[allow(
-    clippy::indexing_slicing,
-    reason = "The compiler can prove that the indices are in bounds"
-)]
 #[inline]
 pub fn left_encode_bytes(mut x: usize) -> LeftEncodeBytes {
     let mut buf = [MaybeUninit::uninit(); 2 + USIZE_BYTES];
@@ -161,10 +160,6 @@ impl PartialEq for LeftEncodeBytes {
 
 /// Encodes `x` as a byte string in a way that can be
 /// unambiguously parsed from the end.
-#[allow(
-    clippy::indexing_slicing,
-    reason = "The compiler can prove that the indices are in bounds"
-)]
 #[inline]
 pub fn right_encode(x: usize) -> RightEncode {
     let mut buf = [MaybeUninit::uninit(); USIZE_BYTES + 1];
@@ -239,10 +234,6 @@ impl PartialEq for RightEncode {
 ///     right_encode_bytes(usize::MAX).as_bytes(),
 /// );
 /// ```
-#[allow(
-    clippy::indexing_slicing,
-    reason = "The compiler can prove that the indices are in bounds"
-)]
 #[inline]
 pub fn right_encode_bytes(mut x: usize) -> RightEncodeBytes {
     let mut buf = [MaybeUninit::uninit(); 1 + USIZE_BYTES + 1];
@@ -518,7 +509,6 @@ impl ExactSizeIterator for BytePadIter<'_> {
 impl FusedIterator for BytePadIter<'_> {}
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, reason = "Tests")]
 mod tests {
     use super::*;
 

@@ -55,7 +55,6 @@ macro_rules! impl_kmac {
 
                 const RATE: usize = <$cshake as BlockSizeUser>::BlockSize::USIZE;
                 for s in &bytepad::<RATE>(encode_string(k)) {
-                    println!("s = {s:x?}");
                     cshake.update(s);
                 }
 
@@ -130,7 +129,6 @@ macro_rules! impl_kmac_xof {
 
                 const RATE: usize = <$cshake as BlockSizeUser>::BlockSize::USIZE;
                 for s in &bytepad::<RATE>(encode_string(k)) {
-                    println!("s = {s:x?}");
                     cshake.update(s);
                 }
 
@@ -175,6 +173,7 @@ impl_kmac_xof!("KMACXOF128", KmacXof128, CShake128, 128);
 impl_kmac_xof!("KMACXOF256", KmacXof256, CShake256, 256);
 
 #[cfg(test)]
+#[allow(clippy::type_complexity, reason = "Tests")]
 mod tests {
     use generic_array::typenum::U32;
 
