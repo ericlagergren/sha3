@@ -1,6 +1,6 @@
 [package]
 name = "sha3-kmac"
-version = "0.2.0"
+version = "0.2.1"
 description = """
 KMAC per NIST SP 800-185
 """

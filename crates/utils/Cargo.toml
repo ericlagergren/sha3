@@ -1,6 +1,6 @@
 [package]
 name = "sha3-utils"
-version = "0.2.0"
+version = "0.2.1"
 description = """
 SHA-3 utilities
 """

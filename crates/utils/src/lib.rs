@@ -1,6 +1,4 @@
-//! KMAC per NIST [SP 800-185].
-//!
-//! [SP 800-185]: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-185.pdf
+//! SHA-3 utilities.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(any(test, doctest, feature = "std")), no_std)]
