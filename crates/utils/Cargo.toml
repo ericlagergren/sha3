@@ -1,0 +1,41 @@
+[package]
+name = "sha3-utils"
+version = "0.1.0"
+description = """
+SHA-3 utilities
+"""
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/sha3-utls"
+keywords = [ "sha3", "left_encode", "right_encode" ]
+categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
+
+[features]
+default = []
+
+# Enable `alloc` support.
+#
+# Currently unused.
+alloc = []
+
+# Enable `std` support.
+#
+# Currently unused.
+std = []
+
+[dependencies]
+
+[dev-dependencies]
+sha3-utils = { path = ".", features = ["std"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.cargo-all-features]
+always_include_features = []
+
+denylist = []
