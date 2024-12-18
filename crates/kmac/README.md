@@ -1,10 +1,14 @@
-# sha3-utils
+# sha3-kmac
+
+[![Docs][docs-img]][docs-link]
+
+KMAC per [NIST SP 800-185].
 
 ## Installation
 
 ```bash
 [dependencies]
-sha3-utils = "0.2.1"
+sha3-kmac = "0.2.1"
 ```
 
 ## Security
@@ -23,5 +27,6 @@ I have not had this project reviewed by any other cryptographers.
 
 [//]: # (badges)
 
-[docs-img]: https://docs.rs/sha3-utils/badge.svg
-[docs-link]: https://docs.rs/sha3-utils
+[docs-img]: https://docs.rs/sha3-kmac/badge.svg
+[docs-link]: https://docs.rs/sha3-kmac
+[NIST SP 800-185]: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-185.pdf
