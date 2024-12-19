@@ -8,12 +8,21 @@
 )]
 
 use core::{
-    array,
+    array, cmp, hint,
     iter::{ExactSizeIterator, FusedIterator},
     mem::MaybeUninit,
 };
 
-use super::util::{copy_from_slice, slice_assume_init_ref};
+#[cfg(feature = "no-panic")]
+use no_panic::no_panic;
+use typenum::{
+    generic_const_mappings::{Const, ToUInt, U},
+    operator_aliases::{Add1, Prod},
+    type_operators::IsGreaterOrEqual,
+    U2,
+};
+
+use super::util::{as_chunks, copy_from_slice, slice_assume_init_ref};
 
 /// The size in bytes of [`usize`].
 const USIZE_BYTES: usize = ((usize::BITS + 7) / 8) as usize;
@@ -30,35 +39,39 @@ const _: () = assert!(USIZE_BYTES <= 255);
 /// Encodes `x` as a byte string in a way that can be
 /// unambiguously parsed from the beginning.
 #[inline]
-pub fn left_encode(x: usize) -> LeftEncode {
-    let mut buf = [MaybeUninit::uninit(); 1 + USIZE_BYTES];
+#[cfg_attr(feature = "no-panic", no_panic)]
+pub fn left_encode(mut x: usize) -> LeftEncode {
+    let mut buf = [0; 1 + USIZE_BYTES];
 
-    copy_from_slice(&mut buf[1..], &x.to_be_bytes());
-
-    // `x|1` ensures that `n < 8`. It's cheaper than the
-    // obvious `if n == 8 { n = 7; }`.
+    // `x|1` ensures that `n < USIZE_BYTES`. It's cheaper than
+    // using a conditional.
     let n = ((x | 1).leading_zeros() / 8) as usize;
-    buf[n].write((USIZE_BYTES - n) as u8);
-    LeftEncode { buf, n: n as u8 }
+    x <<= n * 8;
+
+    buf[0] = (USIZE_BYTES - n) as u8;
+    buf[1..].copy_from_slice(&x.to_be_bytes());
+
+    LeftEncode {
+        buf,
+        n: (1 + USIZE_BYTES - n) as u8,
+    }
 }
 
 /// The result of [`left_encode`].
 #[derive(Copy, Clone, Debug)]
 pub struct LeftEncode {
-    buf: [MaybeUninit<u8>; 1 + USIZE_BYTES],
-    // Invariant: `buf[n..]` has been initialized.
+    buf: [u8; 1 + USIZE_BYTES],
+    // Invariant: `n` is in [1, buf.len()).
     n: u8,
 }
 
 impl LeftEncode {
     /// Returns the encoded bytes.
     #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: We wrote to every element in
-        // `self.buf[self.n..]`.
-        let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
-        // SAFETY: We wrote to every element in `src`.
-        unsafe { slice_assume_init_ref(src) }
+        // SAFETY: `n` is in [1, self.buf.len()).
+        unsafe { self.buf.get_unchecked(..self.n as usize) }
     }
 }
 
@@ -104,42 +117,51 @@ impl PartialEq for LeftEncode {
 /// );
 /// ```
 #[inline]
-pub fn left_encode_bytes(mut x: usize) -> LeftEncodeBytes {
-    let mut buf = [MaybeUninit::uninit(); 2 + USIZE_BYTES];
+#[cfg_attr(feature = "no-panic", no_panic)]
+pub fn left_encode_bytes(x: usize) -> LeftEncodeBytes {
+    let mut buf = [0; 1 + USIZE_BYTES + 1];
 
-    let hi = (x >> (usize::BITS - 3)) & 0x7;
-    buf[1].write(hi as u8);
-    x <<= 3;
-    copy_from_slice(&mut buf[2..], &x.to_be_bytes());
+    let mut hi = (x >> (usize::BITS - 3)) as u8;
+    let mut lo = x << 3;
 
-    // `x|1` ensures that `n < 8`. It's cheaper than the
-    // obvious `if n == 8 { n = 7; }`.
     let n = if hi == 0 {
-        1 + ((x | 1).leading_zeros() / 8) as usize
+        // `x|1` ensures that `n < USIZE_BYTES`. It's cheaper
+        // than a conditional.
+        let n = (lo | 1).leading_zeros() / 8;
+        lo <<= n * 8;
+        hi = (lo >> (usize::BITS - 8)) as u8;
+        lo <<= 8;
+        (n + 1) as usize
     } else {
         0
     };
-    buf[n].write((1 + USIZE_BYTES - n) as u8);
-    LeftEncodeBytes { buf, n: n as u8 }
+
+    buf[0] = (1 + USIZE_BYTES - n) as u8;
+    buf[1] = hi;
+    buf[2..2 + USIZE_BYTES].copy_from_slice(&lo.to_be_bytes());
+
+    LeftEncodeBytes {
+        buf,
+        n: (1 + 1 + USIZE_BYTES - n) as u8,
+    }
 }
 
 /// The result of [`left_encode_bytes`].
 #[derive(Copy, Clone, Debug)]
 pub struct LeftEncodeBytes {
-    buf: [MaybeUninit<u8>; 2 + USIZE_BYTES],
-    // Invariant: `buf[n..]` has been initialized.
+    buf: [u8; 2 + USIZE_BYTES],
+    // Invariant: `buf[..n] has been initialized.
     n: u8,
 }
 
 impl LeftEncodeBytes {
     /// Returns the encoded bytes.
     #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
         // SAFETY: We wrote to every element in
-        // `self.buf[self.n..BYTES_SIZE+1]`.
-        let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
-        // SAFETY: We wrote to every element in `src`.
-        unsafe { slice_assume_init_ref(src) }
+        // `self.buf[..self.n]`.
+        unsafe { self.buf.get_unchecked(..self.n as usize) }
     }
 }
 
@@ -161,13 +183,14 @@ impl PartialEq for LeftEncodeBytes {
 /// Encodes `x` as a byte string in a way that can be
 /// unambiguously parsed from the end.
 #[inline]
+#[cfg_attr(feature = "no-panic", no_panic)]
 pub fn right_encode(x: usize) -> RightEncode {
     let mut buf = [MaybeUninit::uninit(); USIZE_BYTES + 1];
 
     copy_from_slice(&mut buf[..USIZE_BYTES], &x.to_be_bytes());
 
-    // `x|1` ensures that `n < 8`. It's cheaper than the
-    // obvious `if n == 8 { n = 7; }`.
+    // `x|1` ensures that `n < USIZE_BYTES`. It's cheaper than
+    // using a conditional.
     let n = ((x | 1).leading_zeros() / 8) as usize;
     buf[buf.len() - 1].write((USIZE_BYTES - n) as u8);
     RightEncode { buf, n: n as u8 }
@@ -177,6 +200,7 @@ pub fn right_encode(x: usize) -> RightEncode {
 #[derive(Copy, Clone, Debug)]
 pub struct RightEncode {
     buf: [MaybeUninit<u8>; USIZE_BYTES + 1],
+    // Invariant: `n` is in [1, buf.len()).
     // Invariant: `buf[n..]` has been initialized.
     n: u8,
 }
@@ -184,11 +208,11 @@ pub struct RightEncode {
 impl RightEncode {
     /// Returns the encoded bytes.
     #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: We wrote to every element in
-        // `self.buf[self.n..]`.
+        // SAFETY: `n` is in [1, self.buf.len()).
         let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
-        // SAFETY: We wrote to every element in `src`.
+        // SAFETY: We initialized `src`.
         unsafe { slice_assume_init_ref(src) }
     }
 }
@@ -235,6 +259,7 @@ impl PartialEq for RightEncode {
 /// );
 /// ```
 #[inline]
+#[cfg_attr(feature = "no-panic", no_panic)]
 pub fn right_encode_bytes(mut x: usize) -> RightEncodeBytes {
     let mut buf = [MaybeUninit::uninit(); 1 + USIZE_BYTES + 1];
 
@@ -258,6 +283,7 @@ pub fn right_encode_bytes(mut x: usize) -> RightEncodeBytes {
 #[derive(Copy, Clone, Debug)]
 pub struct RightEncodeBytes {
     buf: [MaybeUninit<u8>; 1 + USIZE_BYTES + 1],
+    // Invariant: `n` is in [1, buf.len()).
     // Invariant: `buf[n..]` has been initialized.
     n: u8,
 }
@@ -265,11 +291,11 @@ pub struct RightEncodeBytes {
 impl RightEncodeBytes {
     /// Returns the encoded bytes.
     #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: We wrote to every element in
-        // `self.buf[self.n..BYTES_SIZE+1]`.
+        // SAFETY: `n` is in [1, self.buf.len()).
         let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
-        // SAFETY: We wrote to every element in `src`.
+        // SAFETY: We initialized `src`.
         unsafe { slice_assume_init_ref(src) }
     }
 }
@@ -307,6 +333,7 @@ impl PartialEq for RightEncodeBytes {
 /// );
 /// ```
 #[inline]
+#[cfg_attr(feature = "no-panic", no_panic)]
 pub fn encode_string(s: &[u8]) -> EncodedString<'_> {
     let prefix = left_encode_bytes(s.len());
     EncodedString { prefix, s }
@@ -321,6 +348,8 @@ pub struct EncodedString<'a> {
 
 impl EncodedString<'_> {
     /// Returns an iterator over the encoded string.
+    #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn iter(&self) -> EncodedStringIter<'_> {
         EncodedStringIter {
             iter: [self.prefix.as_bytes(), self.s].into_iter(),
@@ -332,6 +361,8 @@ impl<'a> IntoIterator for &'a EncodedString<'a> {
     type Item = &'a [u8];
     type IntoIter = EncodedStringIter<'a>;
 
+    #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic)]
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
@@ -389,6 +420,70 @@ impl ExactSizeIterator for EncodedStringIter<'_> {
 
 impl FusedIterator for EncodedStringIter<'_> {}
 
+/// The minimum size, in bytes, allowed by [`bytepad_blocks`].
+///
+/// `USIZE_BYTES` is the size in bytes of [`usize`].
+pub type MinBlockSize = Prod<Add1<U<{ USIZE_BYTES }>>, U2>;
+
+/// Same as [`bytepad`], but returns the data as blocks.
+///
+/// In practice, this has helped avoid needless calls to `memcpy`
+/// and has helped remove panicking branches.
+pub fn bytepad_blocks<const W: usize>(
+    s: EncodedString<'_>,
+) -> ([u8; W], &[[u8; W]], Option<[u8; W]>)
+where
+    Const<W>: ToUInt,
+    U<W>: IsGreaterOrEqual<MinBlockSize>,
+{
+    // `first` is left_encode(w) || left_encode(s) || s[..n].
+    let (first, n) = {
+        let mut first = [0u8; W];
+        let mut i = 0;
+
+        let w = left_encode(W);
+        first[..w.buf.len()].copy_from_slice(&w.buf);
+        i += w.n as usize;
+
+        first[i..i + s.prefix.buf.len()].copy_from_slice(&s.prefix.buf);
+        i += s.prefix.n as usize;
+
+        // Help the compiler out to avoid a bounds check.
+        //
+        // SAFETY:
+        //
+        // - `W` must be at least twice as large as
+        //   `1+USIZE_BYTES`.
+        // - `LeftEncode.buf` is `1+USIZE_BYTES` long.
+        // - `LeftEncode.n` is always in [1, buf.len()) (i.e.,
+        //   a valid index into `LeftEncode.buf`).
+        //
+        // Therefore, `i < first.len()`.
+        //
+        // TODO(eric): Figure out how to express this without
+        // unsafe.
+        unsafe { hint::assert_unchecked(i < first.len()) }
+
+        let n = cmp::min(first[i..].len(), s.s.len());
+        first[i..i + n].copy_from_slice(&s.s[..n]);
+        (first, n)
+    };
+
+    // `mid` is s[n..m].
+    let (mid, rest) = as_chunks(&s.s[n..]);
+
+    // `last` is s[..m].
+    let last = if !rest.is_empty() {
+        let mut block = [0u8; W];
+        block[..rest.len()].copy_from_slice(rest);
+        Some(block)
+    } else {
+        None
+    };
+
+    (first, mid, last)
+}
+
 /// Prepends the integer encoding of `W` to `s`, then pads the
 /// result to a multiple of `W`.
 ///
@@ -413,6 +508,7 @@ impl FusedIterator for EncodedStringIter<'_> {}
 /// );
 /// ```
 #[inline]
+#[cfg_attr(feature = "no-panic", no_panic)]
 pub fn bytepad<const W: usize>(s: EncodedString<'_>) -> BytePad<'_, W> {
     const { assert!(W > 0) }
 
@@ -433,6 +529,7 @@ pub struct BytePad<'a, const W: usize> {
 
 impl<const W: usize> BytePad<'_, W> {
     /// Returns an iterator over the byte-padded string.
+    #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn iter(&self) -> BytePadIter<'_> {
         let w = self.w.as_bytes();
         let prefix = self.s.prefix.as_bytes();
@@ -451,6 +548,8 @@ impl<'a, const W: usize> IntoIterator for &'a BytePad<'a, W> {
     type Item = &'a [u8];
     type IntoIter = BytePadIter<'a>;
 
+    #[inline]
+    #[cfg_attr(feature = "no-panic", no_panic)]
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
@@ -514,6 +613,7 @@ mod tests {
 
     #[test]
     fn test_left_encode() {
+        assert_eq!(left_encode(0).as_bytes(), &[1, 0], "#0");
         for i in 0..usize::BITS {
             let x: usize = 1 << i;
             let mut want = vec![0; 1];
