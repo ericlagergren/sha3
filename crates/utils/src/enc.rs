@@ -664,16 +664,4 @@ mod tests {
             assert_eq!(right_encode_bytes(x).as_bytes(), want, "#{x}");
         }
     }
-
-    #[test]
-    fn test_bytepad_blocks() {
-        let mut key = [0u8; 18 * 3];
-        for (i, v) in key.iter_mut().enumerate() {
-            *v = i as u8;
-        }
-        let (first, mid, last) = bytepad_blocks::<18>(encode_string(&key));
-        println!("first = {first:?}");
-        println!("mid = {mid:?}");
-        println!("last = {last:?}");
-    }
 }
