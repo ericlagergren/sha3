@@ -37,7 +37,7 @@ std = [
 [dependencies]
 generic-array = { workspace = true, default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
-sha3-utils = { version = "0.2.0", path = "../utils", default-features = false }
+sha3-utils = { version = "0.3.0", path = "../utils", default-features = false }
 
 [dev-dependencies]
 tuple-hash = { path = ".", features = ["rust-crypto"] }
