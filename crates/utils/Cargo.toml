@@ -1,6 +1,6 @@
 [package]
 name = "sha3-utils"
-version = "0.2.1"
+version = "0.3.0"
 description = """
 SHA-3 utilities
 """
@@ -24,12 +24,16 @@ default = []
 # Currently unused.
 alloc = []
 
+no-panic = ["dep:no-panic"]
+
 # Enable `std` support.
 #
 # Currently unused.
 std = []
 
 [dependencies]
+no-panic = { workspace = true, default-features = false, optional = true }
+typenum = { workspace = true, default-features = false, features = ["const-generics"] }
 
 [dev-dependencies]
 sha3-utils = { path = ".", features = ["std"] }
@@ -41,4 +45,5 @@ rustdoc-args = ["--cfg", "docsrs"]
 [package.metadata.cargo-all-features]
 always_include_features = []
 
-denylist = []
+# TODO(eric): Needs --release
+denylist = ["no-panic"]

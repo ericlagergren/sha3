@@ -37,3 +37,12 @@ transmute_ptr_to_ptr = "warn"
 undocumented_unsafe_blocks = "warn"
 unwrap_used = "warn"
 wildcard_imports = "warn"
+
+[workspace.dependencies]
+generic-array = { version = "1", default-features = false }
+no-panic = { version = "0.1", default-features = false }
+typenum = { version = "1", default-features = false }
+
+# Dev
+criterion = { version = "0.5" }
+pprof = { version = "0.12", features = ["criterion", "flamegraph", "protobuf-codec"] }
