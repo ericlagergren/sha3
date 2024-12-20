@@ -51,27 +51,30 @@ pub fn left_encode(mut x: usize) -> LeftEncode {
     buf[0] = (USIZE_BYTES - n) as u8;
     buf[1..].copy_from_slice(&x.to_be_bytes());
 
-    LeftEncode {
-        buf,
-        n: (1 + USIZE_BYTES - n) as u8,
-    }
+    LeftEncode { buf }
 }
 
 /// The result of [`left_encode`].
 #[derive(Copy, Clone, Debug)]
 pub struct LeftEncode {
+    // Invariant: `buf[0]` is in [0, buf.len()-1).
     buf: [u8; 1 + USIZE_BYTES],
-    // Invariant: `n` is in [1, buf.len()).
-    n: u8,
 }
 
 impl LeftEncode {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless")]
+    pub const fn len(&self) -> usize {
+        (self.buf[0] + 1) as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: `n` is in [1, self.buf.len()).
-        unsafe { self.buf.get_unchecked(..self.n as usize) }
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        unsafe { self.buf.get_unchecked(..self.len()) }
     }
 }
 
@@ -140,28 +143,30 @@ pub fn left_encode_bytes(x: usize) -> LeftEncodeBytes {
     buf[1] = hi;
     buf[2..2 + USIZE_BYTES].copy_from_slice(&lo.to_be_bytes());
 
-    LeftEncodeBytes {
-        buf,
-        n: (1 + 1 + USIZE_BYTES - n) as u8,
-    }
+    LeftEncodeBytes { buf }
 }
 
 /// The result of [`left_encode_bytes`].
 #[derive(Copy, Clone, Debug)]
 pub struct LeftEncodeBytes {
+    // Invariant: `buf[0]` is in [0, buf.len()-1).
     buf: [u8; 2 + USIZE_BYTES],
-    // Invariant: `buf[..n] has been initialized.
-    n: u8,
 }
 
 impl LeftEncodeBytes {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless")]
+    pub const fn len(&self) -> usize {
+        (self.buf[0] + 1) as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: We wrote to every element in
-        // `self.buf[..self.n]`.
-        unsafe { self.buf.get_unchecked(..self.n as usize) }
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        unsafe { self.buf.get_unchecked(..self.len()) }
     }
 }
 
@@ -191,27 +196,36 @@ pub fn right_encode(x: usize) -> RightEncode {
 
     // `x|1` ensures that `n < USIZE_BYTES`. It's cheaper than
     // using a conditional.
-    let n = ((x | 1).leading_zeros() / 8) as usize;
-    buf[buf.len() - 1].write((USIZE_BYTES - n) as u8);
-    RightEncode { buf, n: n as u8 }
+    let n = (x | 1).leading_zeros() / 8;
+    buf[buf.len() - 1].write((USIZE_BYTES - n as usize) as u8);
+    RightEncode { buf }
 }
 
 /// The result of [`right_encode`].
 #[derive(Copy, Clone, Debug)]
 pub struct RightEncode {
+    // Invariant: `buf[buf.len()-1]` is in [1, buf.len()).
+    // Invariant: `buf[n..]` has been initialized where `n` is
+    // `buf.len() - 1 - buf[buf.len()-1]`.
     buf: [MaybeUninit<u8>; USIZE_BYTES + 1],
-    // Invariant: `n` is in [1, buf.len()).
-    // Invariant: `buf[n..]` has been initialized.
-    n: u8,
 }
 
 impl RightEncode {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless")]
+    pub const fn len(&self) -> usize {
+        // SAFETY: `buf[buf.len()-1..]` has been initialized.
+        let n = unsafe { self.buf[self.buf.len() - 1].assume_init() };
+        self.buf.len() - 1 - n as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: `n` is in [1, self.buf.len()).
-        let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        let src = unsafe { self.buf.get_unchecked(self.len()..) };
         // SAFETY: We initialized `src`.
         unsafe { slice_assume_init_ref(src) }
     }
@@ -276,25 +290,34 @@ pub fn right_encode_bytes(mut x: usize) -> RightEncodeBytes {
         0
     };
     buf[buf.len() - 1].write((1 + USIZE_BYTES - n) as u8);
-    RightEncodeBytes { buf, n: n as u8 }
+    RightEncodeBytes { buf }
 }
 
 /// The result of [`right_encode_bytes`].
 #[derive(Copy, Clone, Debug)]
 pub struct RightEncodeBytes {
+    // Invariant: `buf[buf.len()-1]` is in [1, buf.len()).
+    // Invariant: `buf[n..]` has been initialized where `n` is
+    // `buf.len() - 1 - buf[buf.len()-1]`.
     buf: [MaybeUninit<u8>; 1 + USIZE_BYTES + 1],
-    // Invariant: `n` is in [1, buf.len()).
-    // Invariant: `buf[n..]` has been initialized.
-    n: u8,
 }
 
 impl RightEncodeBytes {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless")]
+    pub const fn len(&self) -> usize {
+        // SAFETY: `buf[buf.len()-1..]` has been initialized.
+        let n = unsafe { self.buf[self.buf.len() - 1].assume_init() };
+        self.buf.len() - 1 - n as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: `n` is in [1, self.buf.len()).
-        let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        let src = unsafe { self.buf.get_unchecked(self.len()..) };
         // SAFETY: We initialized `src`.
         unsafe { slice_assume_init_ref(src) }
     }
@@ -443,10 +466,10 @@ where
 
         let w = left_encode(W);
         first[..w.buf.len()].copy_from_slice(&w.buf);
-        i += w.n as usize;
+        i += w.len();
 
         first[i..i + s.prefix.buf.len()].copy_from_slice(&s.prefix.buf);
-        i += s.prefix.n as usize;
+        i += s.prefix.len();
 
         // Help the compiler out to avoid a bounds check.
         //

@@ -39,7 +39,6 @@ typenum = { workspace = true, default-features = false, features = ["const-gener
 sha3-utils = { path = ".", features = ["std"] }
 
 [package.metadata.docs.rs]
-all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.cargo-all-features]
