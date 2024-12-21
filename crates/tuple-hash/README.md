@@ -8,7 +8,7 @@ TupleHash per [NIST SP 800-185].
 
 ```bash
 [dependencies]
-tuple-hash = "0.2"
+tuple-hash = "0.5.1"
 ```
 
 ## Security

@@ -10,7 +10,6 @@
 use core::{
     array, cmp, hint,
     iter::{ExactSizeIterator, FusedIterator},
-    mem::MaybeUninit,
 };
 
 #[cfg(feature = "no-panic")]
@@ -22,7 +21,7 @@ use typenum::{
     U2,
 };
 
-use super::util::{as_chunks, copy_from_slice, slice_assume_init_ref};
+use super::util::as_chunks;
 
 /// The size in bytes of [`usize`].
 const USIZE_BYTES: usize = ((usize::BITS + 7) / 8) as usize;
@@ -41,37 +40,43 @@ const _: () = assert!(USIZE_BYTES <= 255);
 #[inline]
 #[cfg_attr(feature = "no-panic", no_panic)]
 pub fn left_encode(mut x: usize) -> LeftEncode {
-    let mut buf = [0; 1 + USIZE_BYTES];
-
     // `x|1` ensures that `n < USIZE_BYTES`. It's cheaper than
     // using a conditional.
-    let n = ((x | 1).leading_zeros() / 8) as usize;
+    let n = (x | 1).leading_zeros() / 8;
+    // Shift into the leading zeros so that we write everything
+    // at the start of the buffer. This lets us use constants for
+    // writing, as well as lets us use fixed-size writes (see
+    // `bytepad_blocks`, etc.).
     x <<= n * 8;
 
-    buf[0] = (USIZE_BYTES - n) as u8;
+    let mut buf = [0; 1 + USIZE_BYTES];
+    buf[0] = (USIZE_BYTES - n as usize) as u8;
     buf[1..].copy_from_slice(&x.to_be_bytes());
 
-    LeftEncode {
-        buf,
-        n: (1 + USIZE_BYTES - n) as u8,
-    }
+    LeftEncode { buf }
 }
 
 /// The result of [`left_encode`].
 #[derive(Copy, Clone, Debug)]
 pub struct LeftEncode {
+    // Invariant: `buf[0]` is in [0, buf.len()-1).
     buf: [u8; 1 + USIZE_BYTES],
-    // Invariant: `n` is in [1, buf.len()).
-    n: u8,
 }
 
 impl LeftEncode {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless for this type")]
+    pub const fn len(&self) -> usize {
+        (self.buf[0] + 1) as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: `n` is in [1, self.buf.len()).
-        unsafe { self.buf.get_unchecked(..self.n as usize) }
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        unsafe { self.buf.get_unchecked(..self.len()) }
     }
 }
 
@@ -119,13 +124,12 @@ impl PartialEq for LeftEncode {
 #[inline]
 #[cfg_attr(feature = "no-panic", no_panic)]
 pub fn left_encode_bytes(x: usize) -> LeftEncodeBytes {
-    let mut buf = [0; 1 + USIZE_BYTES + 1];
-
+    // Break `x*8` into double word arithmetic.
     let mut hi = (x >> (usize::BITS - 3)) as u8;
     let mut lo = x << 3;
 
     let n = if hi == 0 {
-        // `x|1` ensures that `n < USIZE_BYTES`. It's cheaper
+        // `lo|1` ensures that `n < USIZE_BYTES`. It's cheaper
         // than a conditional.
         let n = (lo | 1).leading_zeros() / 8;
         lo <<= n * 8;
@@ -136,32 +140,38 @@ pub fn left_encode_bytes(x: usize) -> LeftEncodeBytes {
         0
     };
 
-    buf[0] = (1 + USIZE_BYTES - n) as u8;
-    buf[1] = hi;
-    buf[2..2 + USIZE_BYTES].copy_from_slice(&lo.to_be_bytes());
+    // This might be a smidge better than assigning to `buf[0]`
+    // and `buf[1]` directly.
+    let v = ((1 + USIZE_BYTES - n) as u16) | ((u16::from(hi)) << 8);
 
-    LeftEncodeBytes {
-        buf,
-        n: (1 + 1 + USIZE_BYTES - n) as u8,
-    }
+    let mut buf = [0; 2 + USIZE_BYTES];
+    buf[..2].copy_from_slice(&v.to_le_bytes());
+    buf[2..].copy_from_slice(&lo.to_be_bytes());
+
+    LeftEncodeBytes { buf }
 }
 
 /// The result of [`left_encode_bytes`].
 #[derive(Copy, Clone, Debug)]
 pub struct LeftEncodeBytes {
+    // Invariant: `buf[0]` is in [0, buf.len()-1).
     buf: [u8; 2 + USIZE_BYTES],
-    // Invariant: `buf[..n] has been initialized.
-    n: u8,
 }
 
 impl LeftEncodeBytes {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless for this type")]
+    pub const fn len(&self) -> usize {
+        (self.buf[0] + 1) as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: We wrote to every element in
-        // `self.buf[..self.n]`.
-        unsafe { self.buf.get_unchecked(..self.n as usize) }
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        unsafe { self.buf.get_unchecked(..self.len()) }
     }
 }
 
@@ -185,35 +195,39 @@ impl PartialEq for LeftEncodeBytes {
 #[inline]
 #[cfg_attr(feature = "no-panic", no_panic)]
 pub fn right_encode(x: usize) -> RightEncode {
-    let mut buf = [MaybeUninit::uninit(); USIZE_BYTES + 1];
-
-    copy_from_slice(&mut buf[..USIZE_BYTES], &x.to_be_bytes());
-
     // `x|1` ensures that `n < USIZE_BYTES`. It's cheaper than
     // using a conditional.
-    let n = ((x | 1).leading_zeros() / 8) as usize;
-    buf[buf.len() - 1].write((USIZE_BYTES - n) as u8);
-    RightEncode { buf, n: n as u8 }
+    let n = (x | 1).leading_zeros() / 8;
+
+    let mut buf = [0; USIZE_BYTES + 1];
+    buf[..USIZE_BYTES].copy_from_slice(&x.to_be_bytes());
+    buf[buf.len() - 1] = (USIZE_BYTES - n as usize) as u8;
+
+    RightEncode { buf }
 }
 
 /// The result of [`right_encode`].
 #[derive(Copy, Clone, Debug)]
 pub struct RightEncode {
-    buf: [MaybeUninit<u8>; USIZE_BYTES + 1],
-    // Invariant: `n` is in [1, buf.len()).
-    // Invariant: `buf[n..]` has been initialized.
-    n: u8,
+    // Invariant: `buf[buf.len()-1]` is in [1, buf.len()).
+    buf: [u8; USIZE_BYTES + 1],
 }
 
 impl RightEncode {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless for this type")]
+    pub const fn len(&self) -> usize {
+        let n = self.buf[self.buf.len() - 1];
+        self.buf.len() - 1 - n as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: `n` is in [1, self.buf.len()).
-        let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
-        // SAFETY: We initialized `src`.
-        unsafe { slice_assume_init_ref(src) }
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        unsafe { self.buf.get_unchecked(self.len()..) }
     }
 }
 
@@ -261,42 +275,48 @@ impl PartialEq for RightEncode {
 #[inline]
 #[cfg_attr(feature = "no-panic", no_panic)]
 pub fn right_encode_bytes(mut x: usize) -> RightEncodeBytes {
-    let mut buf = [MaybeUninit::uninit(); 1 + USIZE_BYTES + 1];
-
+    // Break `x*8` into double word arithmetic.
     let hi = (x >> (usize::BITS - 3)) & 0x7;
-    buf[0].write(hi as u8);
     x <<= 3;
-    copy_from_slice(&mut buf[1..1 + USIZE_BYTES], &x.to_be_bytes());
 
     // `x|1` ensures that `n < 8`. It's cheaper than the
     // obvious `if n == 8 { n = 7; }`.
     let n = if hi == 0 {
-        1 + ((x | 1).leading_zeros() / 8) as usize
+        1 + ((x | 1).leading_zeros() / 8)
     } else {
         0
     };
-    buf[buf.len() - 1].write((1 + USIZE_BYTES - n) as u8);
-    RightEncodeBytes { buf, n: n as u8 }
+
+    let mut buf = [0; 1 + USIZE_BYTES + 1];
+    buf[0] = hi as u8;
+    buf[1..1 + USIZE_BYTES].copy_from_slice(&x.to_be_bytes());
+    buf[1 + USIZE_BYTES] = (1 + USIZE_BYTES - n as usize) as u8;
+
+    RightEncodeBytes { buf }
 }
 
 /// The result of [`right_encode_bytes`].
 #[derive(Copy, Clone, Debug)]
 pub struct RightEncodeBytes {
-    buf: [MaybeUninit<u8>; 1 + USIZE_BYTES + 1],
-    // Invariant: `n` is in [1, buf.len()).
-    // Invariant: `buf[n..]` has been initialized.
-    n: u8,
+    // Invariant: `buf[buf.len()-1]` is in [1, buf.len()).
+    buf: [u8; 1 + USIZE_BYTES + 1],
 }
 
 impl RightEncodeBytes {
+    /// Returns the number of encoded bytes.
+    #[inline]
+    #[allow(clippy::len_without_is_empty, reason = "Meaningless for this type")]
+    pub const fn len(&self) -> usize {
+        let n = self.buf[self.buf.len() - 1];
+        self.buf.len() - 1 - n as usize
+    }
+
     /// Returns the encoded bytes.
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
     pub fn as_bytes(&self) -> &[u8] {
-        // SAFETY: `n` is in [1, self.buf.len()).
-        let src = unsafe { self.buf.get_unchecked(self.n as usize..) };
-        // SAFETY: We initialized `src`.
-        unsafe { slice_assume_init_ref(src) }
+        // SAFETY: `self.len()` is in [1, self.buf.len()).
+        unsafe { self.buf.get_unchecked(self.len()..) }
     }
 }
 
@@ -443,10 +463,10 @@ where
 
         let w = left_encode(W);
         first[..w.buf.len()].copy_from_slice(&w.buf);
-        i += w.n as usize;
+        i += w.len();
 
         first[i..i + s.prefix.buf.len()].copy_from_slice(&s.prefix.buf);
-        i += s.prefix.n as usize;
+        i += s.prefix.len();
 
         // Help the compiler out to avoid a bounds check.
         //
