@@ -7,7 +7,7 @@ KMAC per NIST SP 800-185
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-readme.workspace = true
+readme = "README.md"
 repository.workspace = true
 documentation = "https://docs.rs/sha3-kmac"
 keywords = [ "kmac", "mac", "sha3", "xof" ]
