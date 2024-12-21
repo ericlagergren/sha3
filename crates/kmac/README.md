@@ -8,7 +8,7 @@ KMAC per [NIST SP 800-185].
 
 ```bash
 [dependencies]
-sha3-kmac = "0.2.1"
+sha3-kmac = "0.2.2"
 ```
 
 ## Security
