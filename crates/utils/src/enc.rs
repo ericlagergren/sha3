@@ -142,7 +142,7 @@ pub fn left_encode_bytes(x: usize) -> LeftEncodeBytes {
 
     // This might be a smidge better than assigning to `buf[0]`
     // and `buf[1]` directly.
-    let v = ((1 + USIZE_BYTES - n) as u16) | ((hi as u16) << 8);
+    let v = ((1 + USIZE_BYTES - n) as u16) | ((u16::from(hi)) << 8);
 
     let mut buf = [0; 2 + USIZE_BYTES];
     buf[..2].copy_from_slice(&v.to_le_bytes());
