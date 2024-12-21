@@ -4,7 +4,7 @@
 
 ```bash
 [dependencies]
-sha3-utils = "0.2.1"
+sha3-utils = "0.3.1"
 ```
 
 ## Security
