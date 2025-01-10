@@ -1,6 +1,6 @@
 [package]
 name = "tuple-hash"
-version = "0.5.1"
+version = "0.5.2"
 description = """
 TupleHash per NIST SP 800-185
 """
@@ -37,7 +37,7 @@ std = [
 [dependencies]
 generic-array = { workspace = true, default-features = false }
 sha3 = { version = "0.10", default-features = false, optional = true }
-sha3-utils = { version = "0.3.0", path = "../utils", default-features = false }
+sha3-utils = { version = "0.4", path = "../utils", default-features = false }
 
 [dev-dependencies]
 tuple-hash = { path = ".", features = ["rust-crypto"] }
