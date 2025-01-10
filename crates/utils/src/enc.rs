@@ -8,17 +8,17 @@
 )]
 
 use core::{
-    array, cmp, hint,
+    array, cmp, fmt, hint,
     iter::{ExactSizeIterator, FusedIterator},
+    ops::{Add, AddAssign, Mul, Sub},
 };
 
+use hybrid_array::{Array, ArrayN, ArraySize, AssocArraySize};
 #[cfg(feature = "no-panic")]
 use no_panic::no_panic;
 use typenum::{
     generic_const_mappings::{Const, ToUInt, U},
-    operator_aliases::{Add1, Prod},
-    type_operators::IsGreaterOrEqual,
-    U2,
+    Add1, IsGreaterOrEqual, NonZero, Prod, Sum, U1, U2,
 };
 
 use super::util::as_chunks;
@@ -57,7 +57,7 @@ pub fn left_encode(mut x: usize) -> LeftEncode {
 }
 
 /// The result of [`left_encode`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct LeftEncode {
     // Invariant: `buf[0]` is in [0, buf.len()-1).
     buf: [u8; 1 + USIZE_BYTES],
@@ -84,14 +84,6 @@ impl AsRef<[u8]> for LeftEncode {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
-    }
-}
-
-impl Eq for LeftEncode {}
-impl PartialEq for LeftEncode {
-    #[inline]
-    fn eq(&self, rhs: &Self) -> bool {
-        self.as_bytes() == rhs.as_bytes()
     }
 }
 
@@ -152,7 +144,7 @@ pub fn left_encode_bytes(x: usize) -> LeftEncodeBytes {
 }
 
 /// The result of [`left_encode_bytes`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct LeftEncodeBytes {
     // Invariant: `buf[0]` is in [0, buf.len()-1).
     buf: [u8; 2 + USIZE_BYTES],
@@ -182,14 +174,6 @@ impl AsRef<[u8]> for LeftEncodeBytes {
     }
 }
 
-impl Eq for LeftEncodeBytes {}
-impl PartialEq for LeftEncodeBytes {
-    #[inline]
-    fn eq(&self, rhs: &Self) -> bool {
-        self.as_bytes() == rhs.as_bytes()
-    }
-}
-
 /// Encodes `x` as a byte string in a way that can be
 /// unambiguously parsed from the end.
 #[inline]
@@ -207,7 +191,7 @@ pub fn right_encode(x: usize) -> RightEncode {
 }
 
 /// The result of [`right_encode`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct RightEncode {
     // Invariant: `buf[buf.len()-1]` is in [1, buf.len()).
     buf: [u8; USIZE_BYTES + 1],
@@ -235,14 +219,6 @@ impl AsRef<[u8]> for RightEncode {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
-    }
-}
-
-impl Eq for RightEncode {}
-impl PartialEq for RightEncode {
-    #[inline]
-    fn eq(&self, rhs: &Self) -> bool {
-        self.as_bytes() == rhs.as_bytes()
     }
 }
 
@@ -296,7 +272,7 @@ pub fn right_encode_bytes(mut x: usize) -> RightEncodeBytes {
 }
 
 /// The result of [`right_encode_bytes`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct RightEncodeBytes {
     // Invariant: `buf[buf.len()-1]` is in [1, buf.len()).
     buf: [u8; 1 + USIZE_BYTES + 1],
@@ -324,14 +300,6 @@ impl AsRef<[u8]> for RightEncodeBytes {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
-    }
-}
-
-impl Eq for RightEncodeBytes {}
-impl PartialEq for RightEncodeBytes {
-    #[inline]
-    fn eq(&self, rhs: &Self) -> bool {
-        self.as_bytes() == rhs.as_bytes()
     }
 }
 
@@ -505,18 +473,15 @@ where
 }
 
 /// Prepends the integer encoding of `W` to `s`, then pads the
-/// result to a multiple of `W`.
-///
-/// # Preconditions
-///
-/// - `W` must be non-zero.
+/// result to a multiple of `W` for a non-zero `W`.
 ///
 /// # Example
 ///
 /// ```rust
 /// use sha3_utils::{bytepad, encode_string};
 ///
-/// let v = bytepad::<32>(encode_string(b"hello, world!"));
+/// // Accepts `EncodedString`s.
+/// let v = bytepad::<32, _>(encode_string(b"hello, world!"));
 /// assert_eq!(
 ///     v.iter().flatten().copied().collect::<Vec<_>>(),
 ///     &[
@@ -526,47 +491,128 @@ where
 ///         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ///     ],
 /// );
+///
+/// // Accepts arrays of `EncodedString`s.
+/// let v = bytepad::<32, _>([encode_string(b"hello, world!")]);
+/// assert_eq!(
+///     v.iter().flatten().copied().collect::<Vec<_>>(),
+///     &[
+///         1, 32,
+///         1, 104,
+///         104, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33,
+///         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+///     ],
+/// );
+///
+/// let v = bytepad::<32, _>([
+///     encode_string(b"hello, world!"),
+///     encode_string(b"hello, world!"),
+/// ]);
+/// assert_eq!(
+///     v.iter().flatten().copied().collect::<Vec<_>>(),
+///     &[
+///         1, 32,
+///         1, 104,
+///         104, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33,
+///         1, 104,
+///         104, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33,
+///     ],
+/// );
 /// ```
 #[inline]
 #[cfg_attr(feature = "no-panic", no_panic)]
-pub fn bytepad<const W: usize>(s: EncodedString<'_>) -> BytePad<'_, W> {
+pub fn bytepad<'a, const W: usize, N>(s: impl IntoArray<EncodedString<'a>, N>) -> BytePad<'a, W, N>
+where
+    N: ArraySize + NonZero,
+{
     const { assert!(W > 0) }
 
     BytePad {
         w: left_encode(W),
-        s,
+        s: s.into_array(),
         pad: [0u8; W],
     }
 }
 
 /// The result of [`bytepad`].
-#[derive(Copy, Clone, Debug)]
-pub struct BytePad<'a, const W: usize> {
+pub struct BytePad<'a, const W: usize, N>
+where
+    N: ArraySize,
+{
     w: LeftEncode,
-    s: EncodedString<'a>,
+    s: Array<EncodedString<'a>, N>,
     pad: [u8; W],
 }
 
-impl<const W: usize> BytePad<'_, W> {
+impl<const W: usize, N> BytePad<'_, W, N>
+where
+    N: ArraySize + Mul<U2>,
+    Prod<N, U2>: Add<U2>,
+    Sum<Prod<N, U2>, U2>: ArraySize,
+{
     /// Returns an iterator over the byte-padded string.
     #[cfg_attr(feature = "no-panic", no_panic)]
-    pub fn iter(&self) -> BytePadIter<'_> {
-        let w = self.w.as_bytes();
-        let prefix = self.s.prefix.as_bytes();
-        let s = self.s.s;
-        // TODO(eric): What if this overflows?
-        let n = w.len() + prefix.len() + s.len();
-        let m = if n % W != 0 { W - (n % W) } else { 0 };
-        let pad = &self.pad[..m];
+    pub fn iter(&self) -> BytePadIter<ArrayIter<&[u8], PaddedSize<N>>> {
+        let mut n = Wrapping::<W>::new(self.w.len());
+
+        let mut v = Array::<_, PaddedSize<N>>::default();
+        v[0] = self.w.as_bytes();
+        for (v, s) in v[1..].chunks_exact_mut(2).zip(self.s.iter()) {
+            v[0] = s.prefix.as_bytes();
+            v[1] = s.s;
+            n += v[0].len();
+            n += v[1].len();
+        }
+        let i = v.len() - 1;
+        v[i] = &self.pad[..n.remainder()];
+
         BytePadIter {
-            iter: [w, prefix, s, pad].into_iter(),
+            iter: v.into_iter(),
         }
     }
 }
 
-impl<'a, const W: usize> IntoIterator for &'a BytePad<'a, W> {
+impl<'a, const W: usize, N> Copy for BytePad<'a, W, N>
+where
+    N: ArraySize,
+    N::ArrayType<EncodedString<'a>>: Copy,
+{
+}
+
+impl<const W: usize, N> Clone for BytePad<'_, W, N>
+where
+    N: ArraySize,
+{
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            w: self.w,
+            s: self.s.clone(),
+            pad: self.pad,
+        }
+    }
+}
+
+impl<const W: usize, N> fmt::Debug for BytePad<'_, W, N>
+where
+    N: ArraySize,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BytePad")
+            .field("w", &self.w)
+            .field("s", &self.s)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a, const W: usize, N> IntoIterator for &'a BytePad<'a, W, N>
+where
+    N: ArraySize + Mul<U2>,
+    Prod<N, U2>: Add<U2>,
+    Sum<Prod<N, U2>, U2>: ArraySize,
+{
     type Item = &'a [u8];
-    type IntoIter = BytePadIter<'a>;
+    type IntoIter = BytePadIter<ArrayIter<&'a [u8], PaddedSize<N>>>;
 
     #[inline]
     #[cfg_attr(feature = "no-panic", no_panic)]
@@ -577,12 +623,12 @@ impl<'a, const W: usize> IntoIterator for &'a BytePad<'a, W> {
 
 /// An iterator over [`BytePad`].
 #[derive(Clone, Debug)]
-pub struct BytePadIter<'a> {
-    iter: array::IntoIter<&'a [u8], 4>,
+pub struct BytePadIter<I> {
+    iter: I,
 }
 
-impl<'a> Iterator for BytePadIter<'a> {
-    type Item = &'a [u8];
+impl<I: Iterator> Iterator for BytePadIter<I> {
+    type Item = I::Item;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -618,14 +664,110 @@ impl<'a> Iterator for BytePadIter<'a> {
     }
 }
 
-impl ExactSizeIterator for BytePadIter<'_> {
+impl<I: ExactSizeIterator> ExactSizeIterator for BytePadIter<I> {
     #[inline]
     fn len(&self) -> usize {
         self.iter.len()
     }
 }
 
-impl FusedIterator for BytePadIter<'_> {}
+impl<I: FusedIterator> FusedIterator for BytePadIter<I> {}
+
+/// Helper trait for [`bytepad`].
+pub trait IntoArray<T, N: ArraySize> {
+    /// Converts `self` to an array of `T`.
+    fn into_array(self) -> Array<T, N>;
+}
+
+impl<T> IntoArray<T, U1> for T {
+    #[inline]
+    fn into_array(self) -> Array<T, U1> {
+        Array([self])
+    }
+}
+
+impl<T, const N: usize> IntoArray<T, <[T; N] as AssocArraySize>::Size> for [T; N]
+where
+    [T; N]: AssocArraySize + Into<ArrayN<T, N>>,
+{
+    #[inline]
+    fn into_array(self) -> ArrayN<T, { N }> {
+        self.into()
+    }
+}
+
+impl<T, U> IntoArray<T, U> for Array<T, U>
+where
+    U: ArraySize,
+{
+    #[inline]
+    fn into_array(self) -> Array<T, U> {
+        self
+    }
+}
+
+type PaddedSize<N> = Sum<Prod<N, U2>, U2>;
+type ArrayIter<T, N> = <Array<T, N> as IntoIterator>::IntoIter;
+
+/// A `usize` that wraps modulo `W`.
+#[derive(Copy, Clone, Debug)]
+struct Wrapping<const W: usize>(usize);
+
+impl<const W: usize> Wrapping<W> {
+    const fn new(n: usize) -> Self {
+        Self(n % W)
+    }
+
+    const fn remainder(self) -> usize {
+        if self.0 != 0 {
+            W - self.0
+        } else {
+            0
+        }
+    }
+}
+
+impl<const W: usize> Add for Wrapping<W> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self::Output {
+        let a = self.0;
+        let b = rhs.0;
+        Self((a + b) % W)
+    }
+}
+impl<const W: usize> Add<usize> for Wrapping<W> {
+    type Output = Self;
+
+    #[inline(always)]
+    fn add(self, rhs: usize) -> Self::Output {
+        let a = self.0;
+        let b = rhs % W;
+        Self((a + b) % W)
+    }
+}
+impl<const W: usize> AddAssign<usize> for Wrapping<W> {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs % W;
+        self.0 %= W;
+    }
+}
+impl<const W: usize> Sub<Wrapping<W>> for usize {
+    type Output = Self;
+
+    #[inline(always)]
+    fn sub(self, rhs: Wrapping<W>) -> Self::Output {
+        self - rhs.0
+    }
+}
+impl<const W: usize> PartialEq<usize> for Wrapping<W> {
+    #[inline(always)]
+    fn eq(&self, other: &usize) -> bool {
+        self.0 == *other
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -683,5 +825,34 @@ mod tests {
             want.push(want.len() as u8);
             assert_eq!(right_encode_bytes(x).as_bytes(), want, "#{x}");
         }
+    }
+
+    #[test]
+    fn test_bytepad() {
+        #[rustfmt::skip]
+        let want = &[
+            1, 32, 
+            1, 104, 
+            104, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33, 
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+        ];
+        let v = bytepad::<32, _>(encode_string(b"hello, world!"));
+        assert_eq!(v.iter().flatten().copied().collect::<Vec<_>>(), want);
+        let v = bytepad::<32, _>([encode_string(b"hello, world!")]);
+        assert_eq!(v.iter().flatten().copied().collect::<Vec<_>>(), want);
+
+        #[rustfmt::skip]
+        let want = &[
+            1, 32, 
+            1, 104, 
+            104, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33, 
+            1, 104, 
+            104, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33, 
+        ];
+        let v = bytepad::<32, _>([
+            encode_string(b"hello, world!"),
+            encode_string(b"hello, world!"),
+        ]);
+        assert_eq!(v.iter().flatten().copied().collect::<Vec<_>>(), want);
     }
 }

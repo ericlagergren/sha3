@@ -1,6 +1,6 @@
 [package]
 name = "sha3-kmac"
-version = "0.2.3"
+version = "0.2.4"
 description = """
 KMAC per NIST SP 800-185
 """
@@ -35,7 +35,7 @@ std = [
 [dependencies]
 generic-array = { workspace = true, default-features = false }
 sha3 = { version = "0.10", default-features = false }
-sha3-utils = { version = "0.3.0", path = "../utils", default-features = false }
+sha3-utils = { version = "0.4", path = "../utils", default-features = false }
 
 [dev-dependencies]
 sha3-kmac = { path = ".", features = ["std"] }
