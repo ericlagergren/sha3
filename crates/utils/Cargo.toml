@@ -9,7 +9,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-documentation = "https://docs.rs/sha3-utls"
+documentation = "https://docs.rs/sha3-utils"
 keywords = [ "sha3", "left_encode", "right_encode" ]
 categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
 
