@@ -7,9 +7,7 @@ mod bytepad;
 mod enc;
 mod util;
 
-#[cfg(feature = "bytepad")]
-#[cfg_attr(docsrs, doc(cfg(feature = "bytepad")))]
-pub use bytepad::{bytepad, bytepad_blocks, BytePad, MinBlockSize};
+pub use bytepad::{bytepad, bytepad_blocks, BytePad};
 pub use enc::{
     encode_string, left_encode, left_encode_bytes, right_encode, right_encode_bytes, EncodedString,
     EncodedStringIter, LeftEncode, LeftEncodeBytes, RightEncode, RightEncodeBytes,

@@ -1,5 +1,3 @@
-#![cfg(feature = "bytepad")]
-#![cfg_attr(docsrs, doc(cfg(feature = "bytepad")))]
 #![allow(
     clippy::indexing_slicing,
     reason = "The compiler can prove that the indices are in bounds"
@@ -17,20 +15,11 @@ use core::{
 
 #[cfg(feature = "no-panic")]
 use no_panic::no_panic;
-use typenum::{
-    generic_const_mappings::{Const, ToUInt, U},
-    Add1, IsGreaterOrEqual, Prod, U2,
-};
 
 use crate::{
     enc::{left_encode, EncodedString, LeftEncode, LeftEncodeBytes, USIZE_BYTES},
     util::as_chunks,
 };
-
-/// The minimum size, in bytes, allowed by [`bytepad_blocks`].
-///
-/// `USIZE_BYTES` is the size in bytes of [`usize`].
-pub type MinBlockSize = Prod<Add1<U<{ USIZE_BYTES }>>, U2>;
 
 /// The minimum size, in bytes, allowed by [`bytepad_blocks`].
 pub const MIN_BLOCK_SIZE: usize = (1 + USIZE_BYTES) * 2;
@@ -42,11 +31,7 @@ pub const MIN_BLOCK_SIZE: usize = (1 + USIZE_BYTES) * 2;
 /// and has helped remove panicking branches.
 pub fn bytepad_blocks<const W: usize>(
     s: EncodedString<'_>,
-) -> ([u8; W], &[[u8; W]], Option<[u8; W]>)
-where
-    Const<W>: ToUInt,
-    U<W>: IsGreaterOrEqual<MinBlockSize>,
-{
+) -> ([u8; W], &[[u8; W]], Option<[u8; W]>) {
     const { assert!(W >= MIN_BLOCK_SIZE, "`W` is too small") }
 
     let (prefix, s) = s.to_parts();

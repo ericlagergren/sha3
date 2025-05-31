@@ -35,7 +35,7 @@ std = [
 [dependencies]
 generic-array = { workspace = true, default-features = false }
 sha3 = { version = "0.10", default-features = false }
-sha3-utils = { version = "0.5", path = "../utils", default-features = false, features = ["bytepad"]}
+sha3-utils = { version = "0.5", path = "../utils", default-features = false }
 
 [dev-dependencies]
 sha3-kmac = { path = ".", features = ["std"] }

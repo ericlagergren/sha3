@@ -26,11 +26,6 @@ alloc = [
 	"zerocopy/alloc",
 ]
 
-# Enable `bytepad` support.
-bytepad = [
-	"dep:typenum",
-]
-
 no-panic = ["dep:no-panic"]
 
 # Enable `std` support.
@@ -42,7 +37,6 @@ std = [
 
 [dependencies]
 no-panic = { workspace = true, default-features = false, optional = true }
-typenum = { workspace = true, default-features = false, features = ["const-generics"], optional = true }
 zerocopy = { workspace = true, default-features = false, features = ["derive"] }
 
 [dev-dependencies]
