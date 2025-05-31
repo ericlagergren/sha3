@@ -1,3 +1,4 @@
+#![cfg(feature = "bytepad")]
 #![allow(clippy::arithmetic_side_effects)]
 #![allow(clippy::transmute_ptr_to_ptr)]
 

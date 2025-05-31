@@ -1,14 +1,14 @@
 [package]
 name = "sha3-utils"
-version = "0.4.0"
+version = "0.5.0"
 description = """
 SHA-3 utilities
 """
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
-readme = "README.md"
 repository.workspace = true
+rust-version.workspace = true
 documentation = "https://docs.rs/sha3-utls"
 keywords = [ "sha3", "left_encode", "right_encode" ]
 categories = [ "cryptography", "no-std", "no-std::no-alloc" ]
@@ -22,19 +22,28 @@ default = []
 # Enable `alloc` support.
 #
 # Currently unused.
-alloc = []
+alloc = [
+	"zerocopy/alloc",
+]
+
+# Enable `bytepad` support.
+bytepad = [
+	"dep:typenum",
+]
 
 no-panic = ["dep:no-panic"]
 
 # Enable `std` support.
 #
 # Currently unused.
-std = []
+std = [
+	"zerocopy/std",
+]
 
 [dependencies]
 no-panic = { workspace = true, default-features = false, optional = true }
-hybrid-array = { version = "0.2", default-features = false }
-typenum = { workspace = true, default-features = false, features = ["const-generics"] }
+typenum = { workspace = true, default-features = false, features = ["const-generics"], optional = true }
+zerocopy = { workspace = true, default-features = false, features = ["derive"] }
 
 [dev-dependencies]
 sha3-utils = { path = ".", features = ["std"] }
@@ -43,7 +52,9 @@ sha3-utils = { path = ".", features = ["std"] }
 rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.cargo-all-features]
-always_include_features = []
+always_include_features = [
+	"hybrid-array",
+]
 
 # TODO(eric): Needs --release
 denylist = ["no-panic"]
