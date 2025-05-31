@@ -402,8 +402,7 @@ mod tests {
             encode_string(b"hello, world!"),
             encode_string(b"hello, world!"),
         ])
-        .map(|v| v.as_bytes().to_vec())
-        .flatten()
+        .flat_map(|v| v.as_bytes().to_vec())
         .collect::<Vec<_>>();
         assert_eq!(got, want);
     }
