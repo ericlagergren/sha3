@@ -46,9 +46,7 @@ sha3-utils = { path = ".", features = ["std"] }
 rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.cargo-all-features]
-always_include_features = [
-	"hybrid-array",
-]
+always_include_features = []
 
 # TODO(eric): Needs --release
 denylist = ["no-panic"]
